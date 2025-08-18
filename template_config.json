@@ -1,0 +1,15 @@
+{
+  "description": "A comprehensive Flask template with production-grade architecture.",
+  "required_fields": [],
+  "required_files": [
+    "app/__init__.py",
+    "app/routes.py",
+    "app/models.py",
+    "config.py",
+    "requirements.txt"
+  ],
+  "lang": "Python",
+  "framework": "Flask",
+  "name": "flask_template",
+  "scene": "default_flask_project"
+}

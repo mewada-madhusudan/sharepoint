@@ -1,0 +1,181 @@
+/* Custom styles for SharePoint Excel Interface */
+
+body {
+    background-color: #f8f9fa;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Grid enhancements */
+.ag-theme-alpine {
+    --ag-font-size: 14px;
+    --ag-font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    --ag-header-background-color: #f8f9fa;
+    --ag-header-foreground-color: #495057;
+    --ag-border-color: #dee2e6;
+    --ag-row-hover-color: #e3f2fd;
+    --ag-selected-row-background-color: #bbdefb;
+}
+
+.ag-header-cell-label {
+    font-weight: 600;
+}
+
+.ag-cell-edit-input {
+    border: 2px solid #007bff !important;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25) !important;
+}
+
+/* Toolbar styling */
+.card {
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.btn {
+    border-radius: 0.375rem;
+    font-weight: 500;
+}
+
+.btn-group .btn:not(:last-child) {
+    border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Status badges */
+.badge {
+    font-size: 0.75em;
+    font-weight: 500;
+    margin-right: 0.5rem;
+}
+
+/* Modal enhancements */
+.modal-header {
+    border-bottom: 2px solid #f8f9fa;
+}
+
+.modal-footer {
+    border-top: 2px solid #f8f9fa;
+}
+
+/* Form styling */
+.form-label {
+    font-weight: 600;
+    color: #495057;
+}
+
+.form-control:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+/* Toast positioning */
+.toast {
+    min-width: 300px;
+}
+
+/* Loading spinner */
+.spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .btn-group {
+        flex-direction: column;
+        width: 100%;
+    }
+    
+    .btn-group .btn {
+        border-radius: 0.375rem !important;
+        margin-bottom: 0.25rem;
+    }
+    
+    #myGrid {
+        height: 400px !important;
+    }
+}
+
+/* Custom scrollbar for grid */
+.ag-theme-alpine .ag-body-viewport::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.ag-theme-alpine .ag-body-viewport::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.ag-theme-alpine .ag-body-viewport::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+.ag-theme-alpine .ag-body-viewport::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Excel-like cell editing */
+.ag-cell-editing {
+    background-color: #fff3cd !important;
+    border: 2px solid #ffc107 !important;
+}
+
+/* Status indicators */
+.status-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-connected {
+    background-color: #28a745;
+}
+
+.status-disconnected {
+    background-color: #dc3545;
+}
+
+.status-pending {
+    background-color: #ffc107;
+}
+
+/* Keyboard navigation hints */
+.keyboard-hint {
+    font-size: 0.75rem;
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* Error highlighting */
+.ag-cell-error {
+    background-color: #f8d7da !important;
+    color: #721c24 !important;
+}
+
+/* Success highlighting */
+.ag-cell-success {
+    background-color: #d4edda !important;
+    color: #155724 !important;
+}
+
+/* Pending changes highlighting */
+.ag-row-pending {
+    background-color: #fff3cd !important;
+}
+
+/* Filter panel styling */
+.ag-filter-panel {
+    background-color: #ffffff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+}
+
+/* Context menu styling */
+.ag-menu {
+    background-color: #ffffff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
