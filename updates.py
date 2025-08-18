@@ -140,32 +140,103 @@ class SharePointClient:
                 return []
         
         try:
-            # Get list fields using Shareplum
-            fields_data = self.sp_list.get_list_fields()
+            # For Shareplum, we need to get a sample item to understand the fields
+            # or use the site's field definitions
+            sample_items = self.sp_list.get_list_items(fields=['Title'], rows=1)
             
-            field_info = []
-            for field in fields_data:
-                # Skip hidden and read-only fields
-                if not field.get('Hidden', False) and not field.get('ReadOnlyField', False):
+            if sample_items:
+                # Get field names from the first item
+                sample_item = sample_items[0]
+                field_info = []
+                
+                # Standard SharePoint fields
+                standard_fields = {
+                    'ID': {'title': 'ID', 'type': 'Counter', 'required': False},
+                    'Title': {'title': 'Title', 'type': 'Text', 'required': True},
+                    'Created': {'title': 'Created', 'type': 'DateTime', 'required': False},
+                    'Modified': {'title': 'Modified', 'type': 'DateTime', 'required': False},
+                    'Author': {'title': 'Created By', 'type': 'User', 'required': False},
+                    'Editor': {'title': 'Modified By', 'type': 'User', 'required': False}
+                }
+                
+                # Add standard fields first
+                for field_name, field_props in standard_fields.items():
                     field_info.append({
-                        'name': field.get('Name', ''),
-                        'title': field.get('DisplayName', field.get('Name', '')),
-                        'type': field.get('Type', 'Text'),
-                        'required': field.get('Required', False),
-                        'choices': field.get('Choices', [])
+                        'name': field_name,
+                        'title': field_props['title'],
+                        'type': field_props['type'],
+                        'required': field_props['required'],
+                        'choices': []
                     })
-            
-            return field_info
+                
+                # Add custom fields found in the sample item
+                for field_name in sample_item.keys():
+                    if field_name not in standard_fields:
+                        # Try to guess field type based on value
+                        field_type = self._guess_field_type(sample_item[field_name])
+                        field_info.append({
+                            'name': field_name,
+                            'title': field_name.replace('_', ' ').title(),
+                            'type': field_type,
+                            'required': False,
+                            'choices': []
+                        })
+                
+                return field_info
+            else:
+                # No items found, return basic fields
+                return self._get_default_fields()
             
         except Exception as e:
             logger.error(f"Error getting on-premise fields: {str(e)}")
-            # Return basic fields as fallback
-            return [
-                {'name': 'Title', 'title': 'Title', 'type': 'Text', 'required': True, 'choices': []},
-                {'name': 'ID', 'title': 'ID', 'type': 'Counter', 'required': False, 'choices': []},
-                {'name': 'Created', 'title': 'Created', 'type': 'DateTime', 'required': False, 'choices': []},
-                {'name': 'Modified', 'title': 'Modified', 'type': 'DateTime', 'required': False, 'choices': []}
-            ]
+            return self._get_default_fields()
+    
+    def _get_default_fields(self):
+        """Return default SharePoint fields"""
+        return [
+            {'name': 'ID', 'title': 'ID', 'type': 'Counter', 'required': False, 'choices': []},
+            {'name': 'Title', 'title': 'Title', 'type': 'Text', 'required': True, 'choices': []},
+            {'name': 'Created', 'title': 'Created', 'type': 'DateTime', 'required': False, 'choices': []},
+            {'name': 'Modified', 'title': 'Modified', 'type': 'DateTime', 'required': False, 'choices': []},
+            {'name': 'Author', 'title': 'Created By', 'type': 'User', 'required': False, 'choices': []},
+            {'name': 'Editor', 'title': 'Modified By', 'type': 'User', 'required': False, 'choices': []}
+        ]
+    
+    def _guess_field_type(self, value):
+        """Guess field type based on value"""
+        if value is None:
+            return 'Text'
+        
+        value_str = str(value)
+        
+        # Check for datetime patterns
+        datetime_patterns = [
+            r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}',
+            r'\d{1,2}/\d{1,2}/\d{4}',
+            r'\d{4}-\d{2}-\d{2}'
+        ]
+        
+        import re
+        for pattern in datetime_patterns:
+            if re.search(pattern, value_str):
+                return 'DateTime'
+        
+        # Check for numbers
+        try:
+            float(value_str)
+            if '.' in value_str:
+                return 'Number'
+            else:
+                return 'Integer'
+        except ValueError:
+            pass
+        
+        # Check for boolean
+        if value_str.lower() in ['true', 'false', '1', '0']:
+            return 'Boolean'
+        
+        # Default to text
+        return 'Text'
     
     def _get_online_fields(self):
         """Get field definitions for SharePoint Online"""
@@ -207,8 +278,13 @@ class SharePointClient:
                 return {'items': [], 'total': 0, 'fields': []}
         
         try:
-            # Get all items (Shareplum doesn't support pagination directly)
-            items = self.sp_list.get_list_items()
+            # Calculate row limit for pagination
+            # Shareplum supports rows parameter for limiting results
+            max_rows = page * page_size
+            
+            # Get items using Shareplum
+            # You can specify fields to retrieve and number of rows
+            items = self.sp_list.get_list_items(rows=max_rows)
             
             # Get field definitions
             fields = self.get_list_fields()
@@ -218,40 +294,51 @@ class SharePointClient:
             for item in items:
                 item_data = {}
                 
-                # Add ID field
-                item_data['ID'] = item.get('ID', '')
-                
-                # Process each field
-                for field in fields:
-                    field_name = field['name']
-                    value = item.get(field_name)
+                # Process all fields found in the item
+                for key, value in item.items():
+                    # Find field definition for proper type handling
+                    field_def = next((f for f in fields if f['name'] == key), None)
+                    field_type = field_def['type'] if field_def else 'Text'
                     
                     # Handle different field types
-                    if field['type'] in ['DateTime', 'Date'] and value:
+                    if field_type in ['DateTime', 'Date'] and value:
                         try:
                             if isinstance(value, str):
                                 # Try to parse various date formats
-                                for fmt in ['%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%d %H:%M:%S', '%m/%d/%Y %H:%M:%S']:
+                                date_formats = [
+                                    '%Y-%m-%dT%H:%M:%SZ',
+                                    '%Y-%m-%dT%H:%M:%S.%fZ',
+                                    '%Y-%m-%d %H:%M:%S',
+                                    '%m/%d/%Y %H:%M:%S',
+                                    '%m/%d/%Y',
+                                    '%Y-%m-%d'
+                                ]
+                                
+                                for fmt in date_formats:
                                     try:
                                         dt = datetime.strptime(value, fmt)
-                                        item_data[field_name] = dt.strftime('%Y-%m-%d %H:%M:%S')
+                                        item_data[key] = dt.strftime('%Y-%m-%d %H:%M:%S')
                                         break
                                     except ValueError:
                                         continue
                                 else:
-                                    item_data[field_name] = value
+                                    item_data[key] = value
                             else:
-                                item_data[field_name] = str(value)
+                                item_data[key] = str(value)
                         except:
-                            item_data[field_name] = value
-                    elif field['type'] in ['User', 'Lookup'] and value:
+                            item_data[key] = value
+                    elif field_type in ['User', 'Lookup'] and value:
                         # Handle user and lookup fields
                         if isinstance(value, dict):
-                            item_data[field_name] = value.get('Title', str(value))
+                            item_data[key] = value.get('Title', str(value))
+                        elif isinstance(value, str) and ';#' in value:
+                            # SharePoint lookup format: "ID;#Value"
+                            parts = value.split(';#')
+                            item_data[key] = parts[1] if len(parts) > 1 else parts[0]
                         else:
-                            item_data[field_name] = str(value)
+                            item_data[key] = str(value) if value is not None else ''
                     else:
-                        item_data[field_name] = value
+                        item_data[key] = value
                 
                 processed_items.append(item_data)
             
@@ -260,9 +347,13 @@ class SharePointClient:
                 processed_items = self._apply_filters(processed_items, filters)
             
             # Apply client-side sorting
-            if sort_field:
+            if sort_field and sort_field in (processed_items[0].keys() if processed_items else []):
                 reverse = sort_order.lower() == 'desc'
-                processed_items.sort(key=lambda x: x.get(sort_field, ''), reverse=reverse)
+                try:
+                    processed_items.sort(key=lambda x: x.get(sort_field, ''), reverse=reverse)
+                except TypeError:
+                    # Handle mixed types by converting to string
+                    processed_items.sort(key=lambda x: str(x.get(sort_field, '')), reverse=reverse)
             
             # Apply pagination
             total_items = len(processed_items)
