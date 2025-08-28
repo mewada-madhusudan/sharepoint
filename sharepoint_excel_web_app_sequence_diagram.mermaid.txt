@@ -1,0 +1,234 @@
+sequenceDiagram
+    participant U as User
+    participant APP as App
+    participant AUTH as AuthProvider
+    participant STORE as AppStore
+    participant GRID as SpreadsheetGrid
+    participant DS as DataService
+    participant API as Backend API
+    participant DB as Database/SharePoint
+    participant WS as WebSocketManager
+    participant CACHE as CacheManager
+
+    %% Initial App Load
+    U->>APP: Load Application
+    APP->>AUTH: checkAuthStatus()
+    AUTH->>STORE: getAuthState()
+    STORE-->>AUTH: authState
+    
+    alt Not Authenticated
+        AUTH->>U: Show Login Screen
+        U->>AUTH: login(credentials)
+        AUTH->>DS: AuthService.login()
+        DS->>API: POST /auth/login
+        API->>DB: Validate credentials
+        DB-->>API: User data
+        API-->>DS: JWT token + user
+        DS-->>AUTH: AuthResult
+        AUTH->>STORE: setAuth(authState)
+    end
+    
+    AUTH-->>APP: Authentication successful
+    APP->>STORE: setStorageMode(mode)
+    APP->>DS: DataService.getSheets()
+    DS->>API: GET /sheets
+    
+    alt SharePoint Mode
+        API->>DB: GraphClient.getLists()
+        DB-->>API: SharePoint Lists
+    else SQLite Mode
+        API->>DB: SELECT * FROM sheets
+        DB-->>API: Sheet records
+    end
+    
+    API-->>DS: Sheet list
+    DS->>CACHE: cache sheets data
+    DS-->>APP: sheets[]
+    APP->>GRID: initialize(sheets[0])
+
+    %% Load Spreadsheet Data
+    GRID->>STORE: getSpreadsheetData()
+    STORE->>CACHE: get(sheetId)
+    
+    alt Cache Miss
+        STORE->>DS: getSheetData(sheetId)
+        DS->>API: GET /sheets/{id}/data
+        
+        alt SharePoint Mode
+            API->>DB: GraphClient.getListItems()
+            DB-->>API: List items
+            API->>API: mapListItemsToSpreadsheet()
+        else SQLite Mode
+            API->>DB: SELECT * FROM sheet_data WHERE sheet_id = ?
+            DB-->>API: Rows
+            API->>API: mapRowsToSpreadsheet()
+        end
+        
+        API-->>DS: SpreadsheetData
+        DS->>CACHE: set(sheetId, data)
+        DS-->>STORE: spreadsheetData
+    else Cache Hit
+        CACHE-->>STORE: cached data
+    end
+    
+    STORE-->>GRID: render data
+    GRID-->>U: Display spreadsheet
+
+    %% Real-time Connection Setup
+    GRID->>WS: connect(userId, sheetId)
+    WS->>WS: handleConnection()
+    WS-->>GRID: Connection established
+
+    %% Cell Edit Operation
+    U->>GRID: Edit cell(row, col, value)
+    GRID->>GRID: validateInput(value)
+    
+    alt Valid Input
+        GRID->>STORE: updateCell(row, col, value)
+        STORE->>STORE: addToHistory(action)
+        
+        %% Optimistic Update
+        STORE->>GRID: Update UI immediately
+        
+        %% Persist Changes
+        STORE->>DS: updateCells(sheetId, changes)
+        DS->>API: PUT /sheets/{id}/cells
+        
+        alt SharePoint Mode
+            API->>DB: GraphClient.updateListItem()
+            DB-->>API: Updated item
+        else SQLite Mode
+            API->>DB: UPDATE sheet_data SET value = ? WHERE row = ? AND col = ?
+            DB-->>API: Success
+        end
+        
+        API-->>DS: Success
+        DS->>CACHE: invalidate(sheetId)
+        DS-->>STORE: Update confirmed
+        
+        %% Broadcast to other users
+        API->>WS: broadcast(cellUpdate)
+        WS->>WS: sendToOtherUsers(userId, message)
+        
+    else Invalid Input
+        GRID->>U: Show validation error
+    end
+
+    %% Formula Calculation
+    U->>GRID: Enter formula (=SUM(A1:A5))
+    GRID->>GRID: FormulaEngine.validate(formula)
+    
+    alt Valid Formula
+        GRID->>GRID: FormulaEngine.evaluate(formula)
+        GRID->>GRID: getDependencies(formula)
+        GRID->>STORE: updateCell(row, col, result, formula)
+        STORE->>DS: updateCells(sheetId, changes)
+        %% Same persistence flow as above
+    else Invalid Formula
+        GRID->>U: Show formula error
+    end
+
+    %% Bulk Operations (Copy/Paste)
+    U->>GRID: Select range & copy
+    GRID->>GRID: handleCopy()
+    U->>GRID: Select target & paste
+    GRID->>GRID: handlePaste(data)
+    GRID->>STORE: updateCells(changes[])
+    
+    %% Batch update
+    STORE->>DS: updateCells(sheetId, changes)
+    DS->>API: PUT /sheets/{id}/cells/batch
+    
+    alt SharePoint Mode
+        API->>DB: GraphClient.batchUpdateItems()
+    else SQLite Mode
+        API->>DB: BEGIN TRANSACTION; Multiple UPDATEs; COMMIT;
+    end
+
+    %% Undo/Redo Operations
+    U->>GRID: Undo (Ctrl+Z)
+    GRID->>STORE: undo()
+    STORE->>STORE: revertToHistoryState(index-1)
+    STORE->>DS: updateCells(sheetId, revertChanges)
+    %% Same persistence flow
+
+    %% Create New Sheet
+    U->>APP: Create new sheet
+    APP->>DS: createSheet(name, schema)
+    DS->>API: POST /sheets
+    
+    alt SharePoint Mode
+        API->>DB: GraphClient.createList(schema)
+        DB-->>API: List ID
+    else SQLite Mode
+        API->>DB: CREATE TABLE sheet_xxx; INSERT INTO sheets
+        DB-->>API: Sheet ID
+    end
+    
+    API-->>DS: sheetId
+    DS->>CACHE: invalidate("sheets")
+    DS-->>APP: New sheet created
+    APP->>GRID: switchToSheet(sheetId)
+
+    %% Sorting Operation
+    U->>GRID: Sort column ascending
+    GRID->>STORE: sortData(column, direction)
+    STORE->>DS: getSheetData(sheetId, sort)
+    DS->>API: GET /sheets/{id}/data?sort=column_asc
+    
+    alt SharePoint Mode
+        API->>DB: GraphClient.getListItems($orderby)
+    else SQLite Mode
+        API->>DB: SELECT * FROM sheet_data ORDER BY column ASC
+    end
+    
+    API-->>DS: Sorted data
+    DS-->>STORE: Update spreadsheet state
+    STORE-->>GRID: Re-render with sorted data
+
+    %% Filter Operation  
+    U->>GRID: Apply filter
+    GRID->>STORE: filterData(criteria)
+    STORE->>DS: getSheetData(sheetId, filter)
+    DS->>API: GET /sheets/{id}/data?filter=criteria
+    
+    alt SharePoint Mode
+        API->>DB: GraphClient.getListItems($filter)
+    else SQLite Mode  
+        API->>DB: SELECT * FROM sheet_data WHERE criteria
+    end
+    
+    API-->>DS: Filtered data
+    DS-->>STORE: Update view state
+    STORE-->>GRID: Re-render filtered view
+
+    %% Real-time Collaboration
+    Note over WS,GRID: Other user makes changes
+    WS->>GRID: onMessage(cellUpdate)
+    GRID->>STORE: applyRemoteChange(change)
+    STORE->>GRID: Update affected cells
+    GRID-->>U: Show real-time updates
+
+    %% Error Handling
+    DS->>API: Request fails
+    API-->>DS: Error response
+    DS->>DS: handleError(error)
+    
+    alt Recoverable Error
+        DS->>CACHE: get(sheetId, stale=true)
+        CACHE-->>DS: Stale data
+        DS-->>GRID: Show stale data + warning
+    else Non-recoverable Error
+        DS-->>GRID: Show error message
+        GRID-->>U: Display user-friendly error
+    end
+
+    %% Logout
+    U->>AUTH: logout()
+    AUTH->>DS: AuthService.logout()
+    DS->>API: POST /auth/logout
+    API-->>DS: Success
+    AUTH->>STORE: clearAuth()
+    AUTH->>CACHE: clear()
+    AUTH->>WS: disconnect()
+    AUTH-->>U: Redirect to login

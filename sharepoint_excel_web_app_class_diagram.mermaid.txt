@@ -1,0 +1,305 @@
+classDiagram
+    %% Frontend Layer
+    class App {
+        +React.FC
+        +render() JSX.Element
+        +handleModeSwitch(mode: StorageMode) void
+    }
+
+    class SpreadsheetGrid {
+        +data: CellData[][]
+        +selectedCells: CellRange
+        +formulas: FormulaMap
+        +onCellChange(row: number, col: number, value: any) void
+        +onCellSelect(range: CellRange) void
+        +handlePaste(data: string[][]) void
+        +handleCopy() string[][]
+        +calculateFormula(formula: string) any
+        +render() JSX.Element
+    }
+
+    class Toolbar {
+        +activeTools: ToolState
+        +onFormatChange(format: CellFormat) void
+        +onSortClick(column: number, direction: SortDirection) void
+        +onFilterClick(filters: FilterConfig) void
+        +onSave() void
+        +onUndo() void
+        +onRedo() void
+        +render() JSX.Element
+    }
+
+    class AuthProvider {
+        +authState: AuthState
+        +currentUser: User | null
+        +login(credentials: LoginCredentials) Promise~AuthResult~
+        +logout() Promise~void~
+        +refreshToken() Promise~string~
+        +checkAuthStatus() boolean
+    }
+
+    %% State Management
+    class AppStore {
+        +state: AppState
+        +storageMode: StorageMode
+        +spreadsheetData: SpreadsheetState
+        +authState: AuthState
+        +uiState: UIState
+        +setStorageMode(mode: StorageMode) void
+        +updateCell(row: number, col: number, value: any) void
+        +setAuth(auth: AuthState) void
+        +addToHistory(action: Action) void
+    }
+
+    class SpreadsheetState {
+        +data: CellData[][]
+        +metadata: SheetMetadata
+        +formulas: Map~string, string~
+        +formatting: Map~string, CellFormat~
+        +selections: CellRange[]
+        +history: Action[]
+        +historyIndex: number
+    }
+
+    %% Service Layer
+    class DataService {
+        <<interface>>
+        +getSheetData(sheetId: string) Promise~SpreadsheetData~
+        +updateCells(sheetId: string, changes: CellChange[]) Promise~void~
+        +createSheet(name: string, schema: ColumnSchema[]) Promise~string~
+        +deleteSheet(sheetId: string) Promise~void~
+        +getSheets() Promise~SheetInfo[]~
+    }
+
+    class SharePointDataService {
+        -graphClient: Client
+        -listService: ListService
+        +getSheetData(listId: string) Promise~SpreadsheetData~
+        +updateCells(listId: string, changes: CellChange[]) Promise~void~
+        +createSheet(name: string, schema: ColumnSchema[]) Promise~string~
+        +deleteSheet(listId: string) Promise~void~
+        +getSheets() Promise~SheetInfo[]~
+        -mapListItemsToSpreadsheet(items: ListItem[]) SpreadsheetData
+        -mapSpreadsheetToListItems(data: CellChange[]) ListItemUpdate[]
+    }
+
+    class SQLiteDataService {
+        -db: Database
+        -queryBuilder: QueryBuilder
+        +getSheetData(tableId: string) Promise~SpreadsheetData~
+        +updateCells(tableId: string, changes: CellChange[]) Promise~void~
+        +createSheet(name: string, schema: ColumnSchema[]) Promise~string~
+        +deleteSheet(tableId: string) Promise~void~
+        +getSheets() Promise~SheetInfo[]~
+        -executeQuery(query: string, params: any[]) Promise~any[]~
+        -buildUpdateQuery(changes: CellChange[]) string
+    }
+
+    class AuthService {
+        <<interface>>
+        +login(credentials: LoginCredentials) Promise~AuthResult~
+        +logout() Promise~void~
+        +refreshToken(token: string) Promise~string~
+        +getCurrentUser() Promise~User~
+        +validateToken(token: string) boolean
+    }
+
+    class GraphAuthService {
+        -msalInstance: PublicClientApplication
+        -graphClient: Client
+        +login(credentials: LoginCredentials) Promise~AuthResult~
+        +logout() Promise~void~
+        +refreshToken(token: string) Promise~string~
+        +getCurrentUser() Promise~User~
+        +validateToken(token: string) boolean
+        -acquireTokenSilent() Promise~string~
+    }
+
+    class LocalAuthService {
+        -apiClient: AxiosInstance
+        +login(credentials: LoginCredentials) Promise~AuthResult~
+        +logout() Promise~void~
+        +refreshToken(token: string) Promise~string~
+        +getCurrentUser() Promise~User~
+        +validateToken(token: string) boolean
+        +register(userInfo: RegisterInfo) Promise~User~
+    }
+
+    %% Backend API Layer
+    class APIController {
+        <<abstract>>
+        +router: Router
+        +authMiddleware: AuthMiddleware
+        +validateRequest(schema: Schema) Middleware
+        +handleError(error: Error, req: Request, res: Response) void
+    }
+
+    class SheetsController {
+        -dataService: DataService
+        +getSheets(req: Request, res: Response) Promise~void~
+        +getSheet(req: Request, res: Response) Promise~void~
+        +createSheet(req: Request, res: Response) Promise~void~
+        +updateSheet(req: Request, res: Response) Promise~void~
+        +deleteSheet(req: Request, res: Response) Promise~void~
+        +updateCells(req: Request, res: Response) Promise~void~
+    }
+
+    class AuthController {
+        -authService: AuthService
+        +login(req: Request, res: Response) Promise~void~
+        +logout(req: Request, res: Response) Promise~void~
+        +refresh(req: Request, res: Response) Promise~void~
+        +profile(req: Request, res: Response) Promise~void~
+        +register(req: Request, res: Response) Promise~void~
+    }
+
+    %% Data Models
+    class CellData {
+        +value: any
+        +formula?: string
+        +format?: CellFormat
+        +validation?: ValidationRule
+        +comment?: string
+        +readonly?: boolean
+    }
+
+    class CellChange {
+        +row: number
+        +col: number
+        +oldValue: any
+        +newValue: any
+        +timestamp: Date
+        +userId: string
+    }
+
+    class SpreadsheetData {
+        +id: string
+        +name: string
+        +data: CellData[][]
+        +columns: ColumnSchema[]
+        +metadata: SheetMetadata
+        +permissions: Permission[]
+    }
+
+    class ColumnSchema {
+        +id: string
+        +name: string
+        +type: DataType
+        +required: boolean
+        +defaultValue?: any
+        +validation?: ValidationRule[]
+    }
+
+    class User {
+        +id: string
+        +email: string
+        +name: string
+        +role: UserRole
+        +permissions: string[]
+        +preferences: UserPreferences
+    }
+
+    class AuthState {
+        +isAuthenticated: boolean
+        +user: User | null
+        +token: string | null
+        +refreshToken: string | null
+        +expiresAt: Date | null
+        +storageMode: StorageMode
+    }
+
+    %% Backend Data Layer
+    class DatabaseAdapter {
+        <<interface>>
+        +connect() Promise~void~
+        +disconnect() Promise~void~
+        +query(sql: string, params: any[]) Promise~any[]~
+        +transaction(operations: Operation[]) Promise~void~
+    }
+
+    class SQLiteAdapter {
+        -db: Database
+        +connect() Promise~void~
+        +disconnect() Promise~void~
+        +query(sql: string, params: any[]) Promise~any[]~
+        +transaction(operations: Operation[]) Promise~void~
+        +migrate() Promise~void~
+        +backup(filepath: string) Promise~void~
+    }
+
+    class SharePointAdapter {
+        -graphClient: Client
+        -siteId: string
+        +connect() Promise~void~
+        +disconnect() Promise~void~
+        +query(listId: string, filter: ODataFilter) Promise~any[]~
+        +transaction(operations: Operation[]) Promise~void~
+        +createList(schema: ListSchema) Promise~string~
+        +updateListItem(listId: string, itemId: string, data: any) Promise~void~
+    }
+
+    %% Utility Classes
+    class FormulaEngine {
+        +evaluate(formula: string, context: CellContext) any
+        +validateFormula(formula: string) ValidationResult
+        +getDependencies(formula: string) string[]
+        +registerFunction(name: string, fn: Function) void
+    }
+
+    class CacheManager {
+        -cache: Map~string, CacheEntry~
+        +get(key: string) any | null
+        +set(key: string, value: any, ttl: number) void
+        +invalidate(key: string) void
+        +clear() void
+    }
+
+    class WebSocketManager {
+        -connections: Set~WebSocket~
+        +broadcast(message: WSMessage) void
+        +sendToUser(userId: string, message: WSMessage) void
+        +handleConnection(ws: WebSocket, userId: string) void
+        +handleDisconnection(ws: WebSocket) void
+    }
+
+    %% Relationships
+    App --> SpreadsheetGrid
+    App --> Toolbar
+    App --> AuthProvider
+    App --> AppStore
+    
+    SpreadsheetGrid --> AppStore
+    Toolbar --> AppStore
+    AuthProvider --> AuthService
+    
+    AppStore --> SpreadsheetState
+    AppStore --> AuthState
+    
+    DataService <|-- SharePointDataService
+    DataService <|-- SQLiteDataService
+    
+    AuthService <|-- GraphAuthService
+    AuthService <|-- LocalAuthService
+    
+    APIController <|-- SheetsController
+    APIController <|-- AuthController
+    
+    SheetsController --> DataService
+    AuthController --> AuthService
+    
+    SharePointDataService --> SharePointAdapter
+    SQLiteDataService --> SQLiteAdapter
+    
+    DatabaseAdapter <|-- SQLiteAdapter
+    DatabaseAdapter <|-- SharePointAdapter
+    
+    SpreadsheetGrid --> FormulaEngine
+    AppStore --> CacheManager
+    SheetsController --> WebSocketManager
+    
+    SpreadsheetData --> CellData
+    SpreadsheetData --> ColumnSchema
+    AppStore --> User
+    
+    CellData --> CellChange
+    AuthState --> User
